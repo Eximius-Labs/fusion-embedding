@@ -13,6 +13,7 @@ __all__ = [
     "FusionContrastiveLoss",
     "FusionEmbeddingModel",
     "FusionResampler",
+    "FusionTextEmbedder",
     "TextMemoryBank",
     "precompute_text_bank",
 ]
@@ -24,6 +25,7 @@ _LAZY = {
     "FusionContrastiveLoss": ("fusion_embedding.losses", "FusionContrastiveLoss"),
     "FusionEmbeddingModel": ("fusion_embedding.model", "FusionEmbeddingModel"),
     "FusionResampler": ("fusion_embedding.model", "FusionResampler"),
+    "FusionTextEmbedder": ("fusion_embedding.text_embedder", "FusionTextEmbedder"),
     "TextMemoryBank": ("fusion_embedding.memory_bank", "TextMemoryBank"),
     "precompute_text_bank": ("fusion_embedding.memory_bank", "precompute_text_bank"),
 }
