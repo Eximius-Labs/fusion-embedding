@@ -1,6 +1,8 @@
 """Runpod Serverless handler: text embeddings from fusion-embedding-2.
 
-Loads only the text path (the frozen base + connector), not the audio tower, so it fits a
+The model is loaded lazily on the first request, not at import, so the worker becomes ready
+immediately and the (one-time) weight download + load happens inside the first request rather
+than blocking container startup. Only the text path is loaded (no audio tower), so it fits a
 small GPU. Request/response follow the familiar OpenAI embeddings shape.
 
 Request:  {"input": "some text"}  or  {"input": ["text a", "text b"], "dim": 512}
@@ -10,13 +12,21 @@ import os
 
 import numpy as np
 import runpod
-from fusion_embedding import FusionTextEmbedder
 
 MODEL_REPO = os.environ.get("MODEL_REPO", "EximiusLabs/fusion-embedding-2-2b-preview")
 MODEL_REVISION = os.environ.get("MODEL_REVISION") or None
 
-# Load once at cold start; a bad load should crash the worker with a clear message.
-_model = FusionTextEmbedder.from_pretrained(MODEL_REPO, device="cuda", revision=MODEL_REVISION)
+_model = None
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        from fusion_embedding import FusionTextEmbedder
+        _model = FusionTextEmbedder.from_pretrained(
+            MODEL_REPO, device="cuda", revision=MODEL_REVISION
+        )
+    return _model
 
 
 def handler(event):
@@ -27,7 +37,7 @@ def handler(event):
         return {"error": "missing 'input' (a string or a list of strings)"}
     texts = payload if isinstance(payload, list) else [payload]
     try:
-        vecs = _model.encode(texts, dim=dim)          # np.ndarray, [N, D]
+        vecs = _get_model().encode(texts, dim=dim)     # np.ndarray, [N, D]
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
     if vecs.ndim == 1:

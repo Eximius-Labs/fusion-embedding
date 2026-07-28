@@ -3,7 +3,7 @@
     {
       "name": "text_embedding_smoke",
       "input": { "input": "a dog barks in the distance" },
-      "timeout": 600000
+      "timeout": 900000
     }
   ],
   "config": {
