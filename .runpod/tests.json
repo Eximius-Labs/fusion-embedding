@@ -11,7 +11,6 @@
     "gpuCount": 1,
     "allowedCudaVersions": ["12.8", "12.7", "12.6", "12.5", "12.4"],
     "env": [
-      { "key": "HF_HOME", "value": "/runpod-volume" },
       { "key": "MODEL_REPO", "value": "EximiusLabs/fusion-embedding-2-2b-preview" }
     ]
   }

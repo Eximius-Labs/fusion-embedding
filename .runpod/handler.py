@@ -47,4 +47,5 @@ def handler(event):
     return {"object": "list", "model": MODEL_REPO, "dim": int(vecs.shape[-1]), "data": data}
 
 
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    runpod.serverless.start({"handler": handler})

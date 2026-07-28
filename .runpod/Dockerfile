@@ -1,10 +1,9 @@
 # Runpod Serverless worker for fusion-embedding-2 text embeddings.
-# Weights download at runtime into the mounted volume (HF_HOME=/runpod-volume), so the image
-# stays small. All text-path deps are installed with the SAME interpreter that runs the
-# handler (python3), so imports resolve.
+# Model weights are baked into the image (HF_HOME=/opt/hf) so there is no runtime download;
+# the first request just loads from local disk. Install and run with the same python3.
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-ENV HF_HOME=/runpod-volume \
+ENV HF_HOME=/opt/hf \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
@@ -19,6 +18,11 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         runpod numpy "transformers>=4.46" huggingface_hub accelerate \
         safetensors einops pillow soundfile librosa \
         "git+https://github.com/Eximius-Labs/fusion-embedding"
+
+# Bake the weights (both public) so cold starts don't download at runtime.
+RUN python3 -c "from huggingface_hub import snapshot_download; \
+snapshot_download('Qwen/Qwen3-VL-Embedding-2B'); \
+snapshot_download('EximiusLabs/fusion-embedding-2-2b-preview')"
 
 COPY .runpod/handler.py /handler.py
 
