@@ -11,7 +11,8 @@
     "gpuCount": 1,
     "allowedCudaVersions": ["12.8", "12.7", "12.6", "12.5", "12.4"],
     "env": [
-      { "key": "MODEL_REPO", "value": "EximiusLabs/fusion-embedding-2-2b-preview" }
+      { "key": "MODEL_REPO", "value": "EximiusLabs/fusion-embedding-2-2b-preview" },
+      { "key": "HF_TOKEN", "value": "{{ RUNPOD_SECRET_HF_TOKEN }}" }
     ]
   }
 }

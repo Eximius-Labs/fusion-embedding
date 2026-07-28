@@ -16,8 +16,12 @@
           "default": "EximiusLabs/fusion-embedding-2-2b-preview" } },
       { "key": "MODEL_REVISION",
         "input": { "name": "Revision", "type": "string",
-          "description": "Hugging Face tag or commit to pin (image is baked at main)",
-          "default": "main", "advanced": true } }
+          "description": "Hugging Face tag or commit to pin",
+          "default": "main", "advanced": true } },
+      { "key": "HF_TOKEN",
+        "input": { "name": "HF token", "type": "string",
+          "description": "Optional Hugging Face token for faster, rate-limit-free weight downloads on cold start",
+          "default": "", "advanced": true } }
     ]
   }
 }
