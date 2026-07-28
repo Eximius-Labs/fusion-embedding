@@ -47,5 +47,17 @@ def handler(event):
     return {"object": "list", "model": MODEL_REPO, "dim": int(vecs.shape[-1]), "data": data}
 
 
+def _safe_warm():
+    try:
+        _get_model()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 if __name__ == "__main__":
+    # Warm the model in the background so it is ready (or nearly so) by the time the first
+    # job arrives, without blocking worker readiness. Weights are baked into the image, so
+    # this is a local disk load, not a download.
+    import threading
+    threading.Thread(target=_safe_warm, daemon=True).start()
     runpod.serverless.start({"handler": handler})
