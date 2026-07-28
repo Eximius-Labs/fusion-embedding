@@ -5,20 +5,19 @@
   "category": "embedding",
   "config": {
     "runsOn": "GPU",
-    "containerDiskInGb": 30,
+    "containerDiskInGb": 40,
     "gpuCount": 1,
     "gpuIds": "ADA_24,AMPERE_24",
     "allowedCudaVersions": ["12.8", "12.7", "12.6", "12.5", "12.4"],
     "env": [
-      { "key": "HF_HOME", "value": "/runpod-volume" },
       { "key": "MODEL_REPO",
         "input": { "type": "huggingface", "name": "Model repo",
           "description": "Hugging Face repo id for the fusion-embedding checkpoint",
           "default": "EximiusLabs/fusion-embedding-2-2b-preview" } },
       { "key": "MODEL_REVISION",
         "input": { "name": "Revision", "type": "string",
-          "description": "Hugging Face tag or commit to pin",
-          "default": "v0.1-preview", "advanced": true } }
+          "description": "Hugging Face tag or commit to pin (image is baked at main)",
+          "default": "main", "advanced": true } }
     ]
   }
 }
