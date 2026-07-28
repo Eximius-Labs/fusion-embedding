@@ -24,6 +24,11 @@ RUN python3 -c "from huggingface_hub import snapshot_download; \
 snapshot_download('Qwen/Qwen3-VL-Embedding-2B'); \
 snapshot_download('EximiusLabs/fusion-embedding-2-2b-preview')"
 
+# After baking, run fully offline: load only from the baked cache, never call huggingface.co.
+# This removes the HEAD-request round-trips that can stall model load on the Hub validator pod.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
 COPY .runpod/handler.py /handler.py
 
 CMD ["python3", "-u", "/handler.py"]
