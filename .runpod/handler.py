@@ -1,12 +1,12 @@
-"""Runpod Serverless handler: text embeddings from fusion-embedding-2.
+"""Runpod Serverless handler: text and image embeddings from fusion-embedding-2.
 
-The model is loaded lazily on the first request, not at import, so the worker becomes ready
-immediately and the (one-time) weight download + load happens inside the first request rather
-than blocking container startup. Only the text path is loaded (no audio tower), so it fits a
-small GPU. Request/response follow the familiar OpenAI embeddings shape.
+Text and image share one vector space. The base vision-language model handles both, so no
+audio tower is loaded and it still fits a small GPU. The model loads lazily on the first
+request (warmed in the background at boot). Response follows the OpenAI embeddings shape.
 
-Request:  {"input": "some text"}  or  {"input": ["text a", "text b"], "dim": 512}
-Response: {"object": "list", "model": ..., "dim": D, "data": [{"index": i, "embedding": [...]}]}
+Request (text):   {"input": {"text": "a dog", "dim": 512}}    (list of strings also works)
+Request (image):  {"input": {"image": "<https url | data-uri | base64>"}}
+Response:         {"object": "list", "model": ..., "dim": D, "data": [{"index": i, "embedding": [...]}]}
 """
 import os
 import threading
@@ -35,22 +35,50 @@ def _get_model():
     return _model
 
 
+def _load_image(spec):
+    """spec: an http(s) URL, a data: URI, or raw base64 -> PIL.Image."""
+    import base64
+    import io
+
+    from PIL import Image
+    if isinstance(spec, (bytes, bytearray)):
+        data = bytes(spec)
+    elif spec.startswith(("http://", "https://")):
+        import urllib.request
+        req = urllib.request.Request(spec, headers={"User-Agent": "fusion-embedding-worker"})
+        data = urllib.request.urlopen(req, timeout=30).read()
+    else:
+        if spec.startswith("data:"):
+            spec = spec.split(",", 1)[1]
+        data = base64.b64decode(spec)
+    return Image.open(io.BytesIO(data))
+
+
 def handler(event):
     job_input = event.get("input") or {}
-    payload = job_input.get("input")
     dim = job_input.get("dim")
-    if payload is None:
-        return {"error": "missing 'input' (a string or a list of strings)"}
-    texts = payload if isinstance(payload, list) else [payload]
+    image = job_input.get("image")
+    text = job_input.get("text", job_input.get("input"))   # 'input' kept for back-compat
     try:
-        vecs = _get_model().encode(texts, dim=dim)     # np.ndarray, [N, D]
+        model = _get_model()
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"model load failed: {e}"}
+    try:
+        if image is not None:
+            vec = model.embed_image(_load_image(image), dim=dim).numpy()
+            data = [{"object": "embedding", "index": 0, "embedding": vec.tolist()}]
+        elif text is not None:
+            texts = text if isinstance(text, list) else [text]
+            vecs = model.encode(texts, dim=dim)            # np.ndarray, [N, D]
+            if vecs.ndim == 1:
+                vecs = vecs[None, :]
+            data = [{"object": "embedding", "index": i, "embedding": vecs[i].tolist()}
+                    for i in range(len(texts))]
+        else:
+            return {"error": "provide 'text' (string or list) or 'image' (url / data-uri / base64)"}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
-    if vecs.ndim == 1:
-        vecs = vecs[None, :]
-    data = [{"object": "embedding", "index": i, "embedding": vecs[i].tolist()}
-            for i in range(len(texts))]
-    return {"object": "list", "model": MODEL_REPO, "dim": int(vecs.shape[-1]), "data": data}
+    return {"object": "list", "model": MODEL_REPO, "dim": len(data[0]["embedding"]), "data": data}
 
 
 def _safe_warm():

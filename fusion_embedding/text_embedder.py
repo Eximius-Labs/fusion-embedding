@@ -23,6 +23,7 @@ import torch
 
 BASE_MODEL = "Qwen/Qwen3-VL-Embedding-2B"
 DEFAULT_QUERY_INSTRUCTION = "Retrieve images or text relevant to the user's query."
+DOC_INSTRUCTION = "Represent the user's input."
 CKPT_FILES = ("fusion-embedding-2-2b-preview.pt", "fusion-embedding-1-2b-preview.pt")
 
 
@@ -100,6 +101,29 @@ class FusionTextEmbedder:
         ids_t = torch.tensor([ids], device=self.device)
         pooled = self.model.encode_text(ids_t, torch.ones_like(ids_t))
         pooled = self.model.text_whitening(pooled)
+        return mrl_truncate_normalize(pooled.float(), dim or self.cfg.mrl_default).squeeze(0).cpu()
+
+    @torch.no_grad()
+    def embed_image(self, image, dim: Optional[int] = None) -> torch.Tensor:
+        """Embed one image (a PIL.Image or a path); returns an L2-normalized vector on CPU.
+
+        Runs the frozen base vision-language model directly (no audio tower, no whitening,
+        no adapters), identical to ``FusionEmbedder.embed_image``. This is why the light
+        embedder can serve image and text in one shared space at the text-path footprint."""
+        from PIL import Image
+
+        from fusion_embedding.model import last_token_pool, mrl_truncate_normalize
+        gate = getattr(self.model, "_adapter_gate", None)
+        if gate is not None and gate.active:
+            raise RuntimeError("adapter gate is open during an image embed — "
+                               "non-audio inputs must run with the gate closed")
+        if isinstance(image, (str, os.PathLike)):
+            image = Image.open(str(image))
+        image = image.convert("RGB")
+        text = _chat(DOC_INSTRUCTION, "<|vision_start|><|image_pad|><|vision_end|>")
+        inputs = self.proc(text=[text], images=[image], return_tensors="pt").to(self.device)
+        h = self.full(**inputs).last_hidden_state
+        pooled = last_token_pool(h, inputs["attention_mask"])
         return mrl_truncate_normalize(pooled.float(), dim or self.cfg.mrl_default).squeeze(0).cpu()
 
     @torch.no_grad()
