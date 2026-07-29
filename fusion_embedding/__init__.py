@@ -11,6 +11,7 @@ from __future__ import annotations
 __all__ = [
     "FusionConfig",
     "FusionContrastiveLoss",
+    "FusionEmbedder",
     "FusionEmbeddingModel",
     "FusionResampler",
     "FusionTextEmbedder",
@@ -23,6 +24,7 @@ __version__ = "0.1.0"
 _LAZY = {
     "FusionConfig": ("fusion_embedding.config", "FusionConfig"),
     "FusionContrastiveLoss": ("fusion_embedding.losses", "FusionContrastiveLoss"),
+    "FusionEmbedder": ("fusion_embedding.multimodal", "FusionEmbedder"),
     "FusionEmbeddingModel": ("fusion_embedding.model", "FusionEmbeddingModel"),
     "FusionResampler": ("fusion_embedding.model", "FusionResampler"),
     "FusionTextEmbedder": ("fusion_embedding.text_embedder", "FusionTextEmbedder"),

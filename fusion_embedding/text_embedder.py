@@ -127,6 +127,40 @@ class FusionTextEmbedder:
         return mrl_truncate_normalize(pooled.float(), dim or self.cfg.mrl_default).squeeze(0).cpu()
 
     @torch.no_grad()
+    def embed_video(self, video, fps: Optional[float] = None,
+                    max_frames: Optional[int] = None,
+                    dim: Optional[int] = None) -> torch.Tensor:
+        """Embed a video through the frozen base model's own video path.
+
+        ``video`` is a decoded frame tensor ([T, C, H, W], e.g. straight from
+        a torchcodec ``VideoDecoder``), a file path/URL (decoded with
+        torchcodec, 1 fps up to 64 frames), or a pre-extracted frame sequence
+        (PIL images and/or frame paths, sampled uniformly to 64).
+        Preprocessing natively reimplements the base model's reference scripts;
+        no extra vision package is required. Video uses only the frozen base
+        (no audio tower), so the light embedder serves it identically to
+        ``FusionEmbedder.embed_video`` — no whitening, no adapters."""
+        from fusion_embedding.model import last_token_pool, mrl_truncate_normalize
+        from fusion_embedding.multimodal import _v_prepare, _v_resize_video
+        gate = getattr(self.model, "_adapter_gate", None)
+        if gate is not None and gate.active:
+            # The video path runs through the same (hook-carrying) decoder layers;
+            # non-audio inputs must run with the gate closed so the adapter branch
+            # never runs. Mirrors the embed_image guard.
+            raise RuntimeError("adapter gate is open during a video embed — "
+                               "non-audio inputs must run with the gate closed")
+        frames, metadata = _v_prepare(video, fps, max_frames)
+        frames = _v_resize_video(frames)
+        text = _chat(DOC_INSTRUCTION, "<|vision_start|><|video_pad|><|vision_end|>")
+        inputs = self.proc(text=[text], videos=[frames],
+                           video_metadata=[metadata],
+                           do_resize=False, do_sample_frames=False,
+                           return_tensors="pt").to(self.device)
+        h = self.full(**inputs).last_hidden_state
+        pooled = last_token_pool(h, inputs["attention_mask"])
+        return mrl_truncate_normalize(pooled.float(), dim or self.cfg.mrl_default).squeeze(0).cpu()
+
+    @torch.no_grad()
     def encode(self, texts: Union[str, Sequence[str]],
                instruction: str = DEFAULT_QUERY_INSTRUCTION,
                dim: Optional[int] = None) -> np.ndarray:
