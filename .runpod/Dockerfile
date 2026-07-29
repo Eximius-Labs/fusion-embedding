@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 \
         --index-url https://download.pytorch.org/whl/cu124 && \
     pip install --no-cache-dir \
-        runpod numpy "transformers>=4.46" huggingface_hub hf_transfer accelerate \
+        "runpod~=1.7.0" numpy "transformers>=4.46" huggingface_hub hf_transfer accelerate \
         safetensors einops pillow soundfile librosa \
         "git+https://github.com/Eximius-Labs/fusion-embedding"
 
