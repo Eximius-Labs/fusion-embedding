@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 \
         --index-url https://download.pytorch.org/whl/cu124 && \
     pip install --no-cache-dir \
         runpod numpy "transformers>=4.46" huggingface_hub hf_transfer accelerate \
-        safetensors einops pillow soundfile librosa torchcodec \
+        safetensors einops pillow soundfile librosa "torchcodec==0.1.0" \
         "git+https://github.com/Eximius-Labs/fusion-embedding"
 
 COPY .runpod/handler.py /handler.py
