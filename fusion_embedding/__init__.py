@@ -9,6 +9,7 @@ avoids importing torch when only the config is needed).
 from __future__ import annotations
 
 __all__ = [
+    "EmberEmbedder",
     "FusionConfig",
     "FusionContrastiveLoss",
     "FusionEmbedder",
@@ -22,6 +23,7 @@ __all__ = [
 __version__ = "0.1.0"
 
 _LAZY = {
+    "EmberEmbedder": ("fusion_embedding.ember", "EmberEmbedder"),
     "FusionConfig": ("fusion_embedding.config", "FusionConfig"),
     "FusionContrastiveLoss": ("fusion_embedding.losses", "FusionContrastiveLoss"),
     "FusionEmbedder": ("fusion_embedding.multimodal", "FusionEmbedder"),
