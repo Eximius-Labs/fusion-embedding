@@ -236,7 +236,7 @@ emb_edge  = model.embed(pooled, dim=64)     # 32× smaller index
 
 ### Deploy as an API on RunPod
 
-One-click deploy the text endpoint from the
+One-click deploy the endpoint from the
 [RunPod Hub](https://www.runpod.io/console/hub/Eximius-Labs/fusion-embedding)
 (serverless, scales to zero when idle). Once it is running, call it:
 
@@ -244,10 +244,13 @@ One-click deploy the text endpoint from the
 curl -s https://api.runpod.ai/v2/<ENDPOINT_ID>/runsync \
   -H "Authorization: Bearer $RUNPOD_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"input": {"input": "a dog barks in the distance"}}'
+  -d '{"input": {"text": "a dog on a beach"}}'
 ```
 
-Returns 1024-d embeddings. Batch with `"input": ["a", "b"]`; truncate dimensions with `"dim": 512`.
+The endpoint embeds all four modalities. Swap `text` for `image`, `video`, or
+`audio` (the value is an https URL, a data URI, or base64). Audio needs the audio
+tower, so set `FE2_ENABLE_AUDIO=1` on the endpoint and use a 24 GB or larger GPU.
+Returns 1024-d embeddings; add `"dim": 512` to truncate.
 
 ## Training
 
