@@ -12,6 +12,7 @@ vision-language embedding base with audio — without modifying a single base we
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-research%20preview-orange.svg)](#roadmap)
 [![Paper](https://img.shields.io/badge/paper-arXiv%3A2607.18666-b31b1b.svg)](https://arxiv.org/abs/2607.18666)
+[![Deploy on RunPod](https://api.runpod.io/badge/Eximius-Labs/fusion-embedding)](https://www.runpod.io/console/hub/Eximius-Labs/fusion-embedding)
 
 </div>
 
@@ -232,6 +233,21 @@ emb_edge  = model.embed(pooled, dim=64)     # 32× smaller index
 | `music` | Retrieve music by description. |
 | `speech_language` | Retrieve speech by language. |
 | `speech_paralinguistic` | Retrieve speech by speaker and emotion. |
+
+### Deploy as an API on RunPod
+
+One-click deploy the text endpoint from the
+[RunPod Hub](https://www.runpod.io/console/hub/Eximius-Labs/fusion-embedding)
+(serverless, scales to zero when idle). Once it is running, call it:
+
+```bash
+curl -s https://api.runpod.ai/v2/<ENDPOINT_ID>/runsync \
+  -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"input": "a dog barks in the distance"}}'
+```
+
+Returns 1024-d embeddings. Batch with `"input": ["a", "b"]`; truncate dimensions with `"dim": 512`.
 
 ## Training
 
