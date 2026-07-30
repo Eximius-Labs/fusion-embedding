@@ -24,6 +24,32 @@ TASK_INSTRUCTIONS = {
 TASK_KEYS = tuple(TASK_INSTRUCTIONS.keys())
 
 
+# --- Canonical readout contract (Phase A unified space; docs/unified_readout_contract.md) ---
+# One place for the per-modality chat-template instructions that drive the shared frozen
+# Qwen decoder readout. The query/text side carries the retrieval instruction; the
+# document-side modalities (image, video, thermal) carry a neutral "represent" instruction.
+# Motion (Tremor) is a Tier-3 head trained against a DIFFERENT base template and is noted
+# below: its vectors are NOT drop-in comparable to this readout without re-alignment.
+INSTRUCTION_REGISTRY = {
+    "text_query": "Retrieve images or text relevant to the user's query.",
+    "doc": "Represent the user's input.",
+    "thermal": "Represent this thermal infrared image.",
+}
+# User-content placeholders for the frozen base's native vision path.
+IMAGE_USER_CONTENT = "<|vision_start|><|image_pad|><|vision_end|>"
+VIDEO_USER_CONTENT = "<|vision_start|><|video_pad|><|vision_end|>"
+# The base's official embedding chat-template (system instruction + assistant opener).
+CHAT_TEMPLATE = (
+    "<|im_start|>system\n{instruction}<|im_end|>\n"
+    "<|im_start|>user\n{content}<|im_end|>\n"
+    "<|im_start|>assistant\n"
+)
+# The Tremor motion projector was fit against a divergent text template
+# ("You are a helpful assistant."), no whitening, full 2048-d. Flagged so callers know
+# motion embeddings are not directly comparable to the canonical text readout.
+MOTION_TEXT_TEMPLATE = "You are a helpful assistant."
+
+
 @dataclass
 class FusionConfig:
     """Confirmed dims + Stage-1 hyperparameters.

@@ -16,7 +16,9 @@ __all__ = [
     "FusionEmbeddingModel",
     "FusionResampler",
     "FusionTextEmbedder",
+    "ReadoutContract",
     "TextMemoryBank",
+    "UnifiedEmbedder",
     "precompute_text_bank",
 ]
 
@@ -30,7 +32,9 @@ _LAZY = {
     "FusionEmbeddingModel": ("fusion_embedding.model", "FusionEmbeddingModel"),
     "FusionResampler": ("fusion_embedding.model", "FusionResampler"),
     "FusionTextEmbedder": ("fusion_embedding.text_embedder", "FusionTextEmbedder"),
+    "ReadoutContract": ("fusion_embedding.unified", "ReadoutContract"),
     "TextMemoryBank": ("fusion_embedding.memory_bank", "TextMemoryBank"),
+    "UnifiedEmbedder": ("fusion_embedding.unified", "UnifiedEmbedder"),
     "precompute_text_bank": ("fusion_embedding.memory_bank", "precompute_text_bank"),
 }
 

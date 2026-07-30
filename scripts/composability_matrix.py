@@ -308,3 +308,181 @@ def run(smoke: bool = False) -> dict:
     if matrix["eval_identical"] is not None:
         assert matrix["eval_identical"], "eval reproduction differed — see matrix"
     return matrix
+
+
+# ------------------------------------------------------------------------------------
+# Data-free isolation matrix (release-protocol, self-contained).
+#
+# The exact-preservation claim is a property of the GATE, not of any trained weight, so
+# the isolation matrix needs no retrieval corpus. This entrypoint loads the released FE2
+# audio pack (pinned) and the released thermal pack (seed 1) co-loaded on the same frozen
+# decoder layers, then reports the exact max|delta| per gate x readout cell over synthetic
+# inputs: text / RGB image / VIDEO / audio / thermal. Preserved cells must be 0. Video is
+# the readout not covered by any prior thermal result JSON; it is included here.
+# Run:  PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run --env-file .env modal run \
+#         scripts/composability_matrix.py::isolation_matrix
+# ------------------------------------------------------------------------------------
+@app.function(gpu="A100-80GB", image=image, secrets=[hf_secret],
+              volumes={"/vol": volume}, timeout=3600, memory=32768)
+def isolation_matrix() -> dict:
+    import json
+    import time
+
+    import numpy as np
+    import torch
+    import torch.nn.functional as F
+    from PIL import Image
+
+    import sys
+    sys.path.insert(0, "/root/fe")
+    sys.path.insert(0, "/root/fe/fe2_release")
+
+    from fusion_embedding.adapters import AdapterPacks
+    from inference import FusionEmbedder
+
+    t0 = time.time()
+    dev = "cuda"
+    thermal_ckpt = "/vol/checkpoints/thermal_release_seed1.pt"
+
+    def maxdelta(a, b):
+        if isinstance(a, (list, tuple)):
+            return max(float((x - y).abs().max().item()) for x, y in zip(a, b))
+        return float((a - b).abs().max().item())
+
+    out: dict = {"experiment": "release-protocol composability isolation matrix",
+                 "fe2_repo": FE2_REPO, "fe2_revision": FE2_REV,
+                 "thermal_pack": thermal_ckpt, "cells": {}}
+
+    def cell(name, ref_desc, delta, must_be_zero=True):
+        out["cells"][name] = {"max_abs_delta": delta, "bitwise_equal": delta == 0.0,
+                              "reference": ref_desc, "preserved_expected": must_be_zero}
+        flag = "OK" if (delta == 0.0) == must_be_zero else "FAIL"
+        print(f"CELL {name}: max|delta|={delta:.3e} vs {ref_desc} [{flag}]", flush=True)
+
+    # ---- load released FE2 (audio pack, legacy single-gate attach, pinned) ----
+    print("ISO: loading FE2 (pinned) ...", flush=True)
+    emb = FusionEmbedder.from_pretrained(FE2_REPO, device=dev, revision=FE2_REV)
+    model, full, proc = emb.model, emb.full, emb.proc
+    assert model.audio_adapters is not None and model._adapter_gate is not None
+    d_llm = model.cfg.d_llm if hasattr(model, "cfg") else emb.cfg.d_llm
+
+    # ---- registry-vs-legacy on the released audio weights (synthetic decoder input) ----
+    g = torch.Generator().manual_seed(0)
+    x_syn = torch.randn(2, 12, d_llm, generator=g).to(dev, torch.bfloat16)
+    m_syn = torch.ones(2, 12, dtype=torch.long, device=dev)
+    with torch.no_grad(), model.adapter_scope():
+        y_legacy = model.base_lm(inputs_embeds=x_syn, attention_mask=m_syn).clone()
+    packs_a = AdapterPacks()
+    reg_audio, _ = packs_a.add_pack("audio", model.base_lm, d_llm, RANK)
+    packs_a.to(dev)
+    reg_audio.load_state_dict(model.audio_adapters.state_dict())
+    with torch.no_grad(), packs_a.scope("audio"):
+        y_registry = model.base_lm(inputs_embeds=x_syn, attention_mask=m_syn).clone()
+    for h in packs_a._handles:
+        h.remove()
+    cell("audio_registry_vs_legacy(gate=audio)", "AdapterPacks path vs shipped single-gate path",
+         maxdelta(y_legacy, y_registry))
+
+    # ---- synthetic inputs (deterministic) ----
+    rng = np.random.RandomState(0)
+    wavs = [np.sin(2 * np.pi * f * np.arange(16000 * 4) / 16000).astype("float32")
+            + 0.1 * rng.randn(16000 * 4).astype("float32") for f in (261.6, 440.0, 880.0)]
+    texts = ["a dog barks twice", "rain on a tin roof", "an empty street at night",
+             "orchestral strings swell"]
+    ri = np.random.RandomState(1)
+    rgb_imgs = [Image.fromarray(ri.randint(0, 256, (128, 160, 3), dtype="uint8"), "RGB")
+                for _ in range(4)]
+    rt = np.random.RandomState(2)
+    therm_imgs = [Image.fromarray(rt.randint(0, 256, (128, 160), dtype="uint8"), "L").convert("RGB")
+                  for _ in range(4)]
+    gv = torch.Generator().manual_seed(7)
+    vids = [torch.randint(0, 255, (6, 3, 128, 160), generator=gv, dtype=torch.uint8)
+            for _ in range(2)]
+
+    def pool(h, mask):
+        idx = mask.long().cumsum(1).argmax(1)
+        return h[torch.arange(h.shape[0], device=h.device), idx]
+
+    def embed_thermal(pils, scope):
+        embs = []
+        with torch.no_grad():
+            for im in pils:
+                text = _chat(THERMAL_INSTRUCTION, "<|vision_start|><|image_pad|><|vision_end|>")
+                inp = proc(text=[text], images=[im], return_tensors="pt").to(dev)
+                with scope():
+                    h = full(**inp).last_hidden_state
+                embs.append(F.normalize(pool(h, inp["attention_mask"]).float(), dim=-1).cpu())
+        return torch.cat(embs, 0)
+
+    # ---- audio-pack-ONLY reference (thermal not yet attached) ----
+    audio_ref = [emb.embed_audio(w, sr=16000) for w in wavs]
+
+    # ---- attach released thermal pack via the registry (the deployment mix) ----
+    ck = torch.load(thermal_ckpt, map_location="cpu", weights_only=False)
+    packs = AdapterPacks()
+    thermal_ad, _ = packs.add_pack("thermal", model.base_lm, d_llm, RANK)
+    packs.to(dev)
+    tsd = ck.get("thermal_adapters") or ck.get("adapters") or ck.get("thermal_pack") or ck
+    try:
+        thermal_ad.load_state_dict(tsd)
+        out["thermal_weights"] = "released seed1 (loaded)"
+    except Exception as e:                                 # fall back to nonzero random pack
+        gg = torch.Generator().manual_seed(3)
+        for mm in thermal_ad.modules():
+            if isinstance(mm, torch.nn.Linear) and torch.count_nonzero(mm.weight) == 0:
+                mm.weight.data = (torch.randn(mm.weight.shape, generator=gg) * 0.02).to(dev)
+        out["thermal_weights"] = f"nonzero-random fallback ({type(e).__name__})"
+    thermal_ad.to(dev).float()
+    print("ISO: thermal weights ->", out["thermal_weights"], flush=True)
+
+    # ---- co-loaded readouts (both packs attached; each fires only for its own modality) ----
+    audio_co = [emb.embed_audio(w, sr=16000) for w in wavs]      # audio gate open, thermal closed
+    text_co = [emb.embed_text(t) for t in texts]                 # all gates closed
+    img_co = [emb.embed_image(im) for im in rgb_imgs]            # all gates closed
+    vid_co = [emb.embed_video(v) for v in vids]                  # all gates closed (VIDEO)
+    therm_co = embed_thermal(therm_imgs, lambda: packs.scope("thermal"))  # thermal gate open
+
+    cell("audio(gate=audio+thermal)", "audio-pack-only model (thermal absent)",
+         maxdelta(audio_co, audio_ref))
+
+    # ---- thermal-pack-only reference: remove the audio hooks, re-embed thermal ----
+    for h in model._adapter_handles:
+        h.remove()
+    therm_solo = embed_thermal(therm_imgs, lambda: packs.scope("thermal"))
+    cell("thermal(gate=audio+thermal)", "thermal-pack-only model (audio hooks removed)",
+         maxdelta(therm_co, therm_solo))
+
+    # ---- raw-base reference: remove thermal hooks too, re-embed non-audio modalities ----
+    for h in packs._handles:
+        h.remove()
+    text_base = [emb.embed_text(t) for t in texts]
+    img_base = [emb.embed_image(im) for im in rgb_imgs]
+    vid_base = [emb.embed_video(v) for v in vids]
+    cell("text(gate=none)", "raw frozen base (all hooks removed)", maxdelta(text_co, text_base))
+    cell("image(gate=none)", "raw frozen base (all hooks removed)", maxdelta(img_co, img_base))
+    cell("video(gate=none)", "raw frozen base (all hooks removed)", maxdelta(vid_co, vid_base))
+
+    # ---- negative control: the thermal pack MUST change the thermal readout ----
+    # thermal images through the frozen base (gate closed) vs the trained pack (gate open).
+    import contextlib
+    therm_frozen = embed_thermal(therm_imgs, contextlib.nullcontext)
+    d_therm_active = maxdelta(therm_solo, therm_frozen)
+    out["negative_controls"] = {
+        "thermal_open_vs_frozen_base_max_abs_delta": d_therm_active,
+        "thermal_pack_actually_changes_output": d_therm_active > 0.0,
+    }
+    print(f"NEG-CONTROL thermal open vs frozen base: max|delta|={d_therm_active:.3e} "
+          f"(must be > 0)", flush=True)
+
+    preserved = [c for n, c in out["cells"].items()]
+    out["all_preserved_zero"] = all(
+        (c["max_abs_delta"] == 0.0) == c["preserved_expected"] for c in preserved)
+    out["runtime_s"] = round(time.time() - t0, 1)
+    # write to a directory that exists on the current volume layout
+    with open("/vol/thermal/composability_isolation.json", "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=1)
+    volume.commit()
+    print("ISOLATION_RESULT:", json.dumps(out), flush=True)
+    assert out["all_preserved_zero"], "a preserved cell was non-zero — see matrix"
+    assert d_therm_active > 0.0, "thermal pack did not change output — pack is inert"
+    return out

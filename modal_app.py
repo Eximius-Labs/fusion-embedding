@@ -62,7 +62,7 @@ image = (
 maeb_image = (image.pip_install("torch==2.7.1", "torchvision==0.22.1", "torchaudio==2.7.1",
                                 "torchcodec==0.5", "mteb==2.18.0")
               .add_local_python_source("fusion_embedding")
-              .add_local_file("release/mteb_wrapper.py", "/root/mteb_wrapper.py")
+              .add_local_file("fe2_release/mteb_wrapper.py", "/root/mteb_wrapper.py")
               .add_local_file("submission/fusion_embedding_models.py",
                               "/root/fusion_embedding_models.py"))
 
@@ -2732,6 +2732,93 @@ def precompute_frames(mel_shard: str = "audiocaps4k", frame_shard: str = "",
 
 
 # --------------------------------------------------------------------------- #
+# 6b. reorder_frames_by_order — rewrite a sharded frame corpus in a PRECOMPUTED
+#     global order, so each contiguous dst_shard_size block is one pre-arranged
+#     batch (paper 3 E6 scene-grouped batching). Copies the paired text cache and
+#     writes a fresh index.json. CPU-only; holds all frames in RAM once (needs a
+#     high-memory worker for large corpora), freeing each clip as it is written.
+# --------------------------------------------------------------------------- #
+@app.function(volumes={VOL: volume}, memory=196608, timeout=3 * 3600, env=HF_ENV)
+def reorder_frames_by_order(src_shard: str = "emotion_mined",
+                            dst_shard: str = "emotion_mined_scenegrp",
+                            order_file: str = "/vol/tmp/order_scenegrp.json",
+                            dst_shard_size: int = 128,
+                            text_cache_tag: str = "_native") -> dict:
+    import json
+    import os
+
+    import torch
+
+    from fusion_embedding.data import write_frame_shard, write_text_emb_shard, text_emb_shard_path
+    from fusion_embedding.paths import frames_dir
+
+    src_fd = frames_dir(src_shard)
+    with open(str(src_fd / "index.json")) as fh:
+        idx = json.load(fh)
+    shards = idx["shards"]
+    captions = idx["captions"]
+    tasks = idx.get("tasks", ["sound"] * len(captions))
+    d_audio = int(idx["d_audio"])
+    d_llm = idx.get("d_llm")
+    n = len(captions)
+    print(f"src {src_shard}: {n} clips, {len(shards)} shards, d_audio={d_audio}, cache_tag={text_cache_tag}")
+
+    # Load every clip's frames (kept fp16) + paired cached text embedding, in index (== global) order.
+    frames = [None] * n
+    txt = [None] * n
+    gi = 0
+    for si, sname in enumerate(shards):
+        sp = src_fd / sname
+        sh = torch.load(str(sp), map_location="cpu", weights_only=False)
+        te = torch.load(text_emb_shard_path(str(sp), text_cache_tag),
+                        map_location="cpu", weights_only=False)["text_emb"]
+        m = len(sh["text"])
+        assert sh["text"] == captions[gi:gi + m], f"caption misalignment at shard {sname}"
+        for off in range(m):
+            frames[gi] = sh["frames"][off]           # already fp16
+            txt[gi] = te[off]
+            gi += 1
+        if si % 10 == 0:
+            print(f"  loaded shard {si}/{len(shards)} (gi={gi})", flush=True)
+    assert gi == n, (gi, n)
+
+    with open(order_file) as fh:
+        order = json.load(fh)
+    assert len(order) == n and len(set(order)) == n, "order must be a permutation of all clips"
+
+    dst_fd = frames_dir(dst_shard)
+    os.makedirs(str(dst_fd), exist_ok=True)
+    shard_files, shard_lens = [], []
+    k = 0
+    for start in range(0, n, dst_shard_size):
+        block = order[start:start + dst_shard_size]
+        recs = [{"frames": frames[g], "text": captions[g], "task": tasks[g]} for g in block]
+        embs = torch.stack([txt[g].float() for g in block])
+        name = f"shard-{k:04d}.pt"
+        write_frame_shard(dst_fd / name, recs, half=True)
+        write_text_emb_shard(dst_fd / name, embs, text_cache_tag)
+        shard_files.append(name)
+        shard_lens.append(len(block))
+        for g in block:                              # free as we go (order is a permutation)
+            frames[g] = None
+            txt[g] = None
+        k += 1
+        if k % 20 == 0:
+            print(f"  wrote {k} dst shards", flush=True)
+
+    out_idx = {"d_audio": d_audio, "d_llm": d_llm, "n_total": n,
+               "shard_size": dst_shard_size, "shards": shard_files, "shard_lens": shard_lens,
+               "captions": [captions[g] for g in order], "tasks": [tasks[g] for g in order],
+               "text_cache": True}
+    with open(str(dst_fd / "index.json"), "w") as fh:
+        json.dump(out_idx, fh)
+    volume.commit()
+    print(f"REORDER done: {dst_shard} {n} clips in {len(shard_files)} shards (size {dst_shard_size})")
+    return {"dst_shard": dst_shard, "n": n, "shards": len(shard_files),
+            "shard_size": dst_shard_size, "text_cache_tag": text_cache_tag}
+
+
+# --------------------------------------------------------------------------- #
 # 7. train_frames — train the connector on PRECOMPUTED frames (base only, no 7B
 #    tower). Much faster/step -> bigger batch + longer schedule for real P1.
 # --------------------------------------------------------------------------- #
@@ -2776,14 +2863,14 @@ def train_frames_a100(frame_shard: str = "audiocaps4k_post_proj", steps: int = 4
                       text_cache_tag: str = "", num_workers: int = 4,
                       train_max_frames: int = 250, init_from_ckpt: str = "",
                       recaption: bool = False, adapter_rank: int = 0,
-                      skip_only: bool = False, seed: int = -1) -> dict:
+                      skip_only: bool = False, seed: int = -1, no_shuffle: bool = False) -> dict:
     """A100-80GB wrapper — bigger batch (more negatives) + more RAM for larger frame sets."""
     return _train_frames_impl(frame_shard, steps, batch_size, eval_size, lambda_coral,
                               load_in_4bit, gpu_note, whiten_text, run_tag, eval_816_shard,
                               use_text_cache, accum_steps, bank_negatives, peak_lr,
                               d_resampler, n_query, fn_mask_threshold, soft_label_beta,
                               text_cache_tag, num_workers, train_max_frames, init_from_ckpt,
-                              recaption, adapter_rank, skip_only, seed)
+                              recaption, adapter_rank, skip_only, seed, no_shuffle)
 
 
 # --------------------------------------------------------------------------- #
@@ -3210,13 +3297,90 @@ def uiq_eval(eval_shard: str = "clotho_eval5", ckpt_shard: str = "audiocaps_trai
     return out
 
 
+@app.function(volumes={VOL: volume}, secrets=[hf_secret], timeout=2 * 3600,
+              memory=32768, cpu=4.0, env=HF_ENV, image=maeb_image)
+def voxceleb_probe(task_name: str = "VoxCelebSA") -> dict:
+    """Ground-truth the dataset structure (no full eval, no embedding). Answers:
+    is the audio column a datasets.Audio feature? what splits? clip durations?
+    So the OOM fix stops being guesswork."""
+    import sys
+    sys.path.insert(0, "/root")
+    import datasets
+    import mteb
+
+    task = mteb.get_task(task_name)
+    task.load_data()
+    ds = task.dataset
+    out = {"task": task_name, "datasets_version": datasets.__version__,
+           "dataset_type": type(ds).__name__,
+           "input_col": task.input_column_name, "label_col": task.label_column_name}
+
+    # unwrap to a concrete split
+    if isinstance(ds, dict):
+        out["top_keys"] = list(ds.keys())
+        first = ds[next(iter(ds))]
+        if isinstance(first, dict):                       # nested subset -> split
+            out["nested"] = True
+            first = first[next(iter(first))]
+    else:
+        first = ds
+    feats = first.features
+    ic = task.input_column_name
+    af = feats.get(ic) if isinstance(ic, str) else None
+    out["audio_feature_type"] = type(af).__name__ if af is not None else None
+    out["audio_feature_is_datasets_Audio"] = isinstance(af, datasets.Audio)
+    out["audio_decode_flag"] = getattr(af, "decode", "n/a")
+    out["all_feature_types"] = {k: type(v).__name__ for k, v in feats.items()}
+    out["n_rows_first_split"] = first.num_rows
+    # sample one clip's decoded length WITHOUT loading all
+    try:
+        row0 = first[0]
+        a = row0[ic]
+        if isinstance(a, dict) and "array" in a:
+            out["sample_clip_seconds"] = round(len(a["array"]) / a.get("sampling_rate", 16000), 1)
+        out["sample_audio_repr"] = str(type(a))[:60]
+    except Exception as e:                                 # noqa: BLE001
+        out["sample_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+    print("VOXCELEB_PROBE:", __import__("json").dumps(out, default=str)[:1500], flush=True)
+    return out
+
+
+@app.function(image=maeb_image, timeout=1200)
+def list_maeb_tasks(filter_kw: str = "") -> list:
+    """List available mteb task names (optionally filtered by a keyword), to find a second
+    emotion benchmark. Prints name + task type + main_score metric."""
+    import mteb
+    kws = [k.strip().lower() for k in filter_kw.split(",") if k.strip()]
+    out = []
+    for t in mteb.get_tasks():
+        try:
+            meta = t.metadata
+            name = meta.name
+            desc = (getattr(meta, "description", "") or "")
+            hay = (name + " " + desc).lower()
+            if kws and not any(k in hay for k in kws):
+                continue
+            out.append(f"{name} | {meta.type} | {getattr(meta,'main_score','?')} | mod={getattr(meta,'modalities', '?')}")
+        except Exception:
+            continue
+    for line in out:
+        print(line, flush=True)
+    return out
+
+
 @app.function(gpu="L4", volumes={VOL: volume}, secrets=[hf_secret], timeout=8 * 3600,
+              # 64GB is plenty for every task EXCEPT VoxCelebSA (3553 long interview clips),
+              # which OOMs unboundedly in an mteb Filter that decodes the whole audio column
+              # even at 256GB. The clean_dataset + undersample patches below fix two decode
+              # sites (and help all audio-classification tasks) but a third path remains;
+              # resolving VoxCelebSA needs a LOCAL repro to pinpoint it, not more memory.
               memory=65536, cpu=8.0, env=HF_ENV, image=maeb_image)
 def maeb_eval(ckpt_name: str = ("p1frames_audiocaps_train_full,fsd50k_train,"
                                 "wavcaps_audioset_sl_full,laion_freesound_full"
                                 "_step3200_d500k_full_384_3200.pt"),
               tasks: str = "BeijingOpera", dim: int = 0, audio_batch: int = 8,
-              out_tag: str = "maeb", hub_wrapper_revision: str = "") -> dict:
+              out_tag: str = "maeb", hub_wrapper_revision: str = "",
+              center_audio: bool = False, whiten_audio: bool = False) -> dict:
     """Run MAEB(beta) tasks through the mteb harness with our released-checkpoint wrapper.
 
     ``tasks`` is a comma list of MAEB task names (see the benchmark enumeration in
@@ -3227,17 +3391,112 @@ def maeb_eval(ckpt_name: str = ("p1frames_audiocaps_train_full,fsd50k_train,"
     import sys
 
     sys.path.insert(0, "/root")
+    # Post-hoc embedding-geometry fix for the clustering cells (consumed by the wrapper's
+    # _maybe_center). Set BEFORE importing/using the wrapper.
+    if center_audio:
+        os.environ["FUSION_CENTER_AUDIO"] = "1"
+    if whiten_audio:
+        os.environ["FUSION_WHITEN_AUDIO"] = "1"
     import mteb
     from mteb_wrapper import load_for_mteb
 
     from fusion_embedding.paths import checkpoints_dir
+
+    # ---- OOM fix for audio classification tasks (e.g. VoxCelebSA) --------------
+    # mteb's AbsTaskClassification._undersample_data reads each label via
+    # `dataset[i][label_col]`, i.e. one FULL ROW at a time. For an Audio(decode=True)
+    # column that decodes the clip on every access, so class-balancing decodes the
+    # entire audio column (x n_experiments) before any embedding runs — unbounded RAM
+    # on long-clip datasets, killing the container at "Filter: 0/N" (SIGKILL 137).
+    # Read the label column COLUMNARLY instead; it never touches the audio column.
+    try:
+        import numpy as _np
+        from collections import defaultdict as _dd
+        from mteb.abstasks.classification import AbsTaskClassification as _AC
+
+        def _undersample_no_decode(self, dataset, experiment_num, idxs=None):
+            if idxs is None:
+                idxs = list(range(len(dataset)))
+            _np.random.RandomState(self.seed).shuffle(idxs)
+            labels = dataset[self.label_column_name]          # columnar: no audio decode
+            counter, sampled = _dd(int), []
+            for i in idxs:
+                lab = labels[i]
+                if counter[lab] < self.samples_per_label:
+                    sampled.append(i)
+                    counter[lab] += 1
+            return dataset.select(sampled), idxs, sampled
+
+        _AC._undersample_data = _undersample_no_decode
+        print("[patch] AbsTaskClassification._undersample_data -> columnar-label (no audio decode)")
+    except Exception as _e:                                    # noqa: BLE001
+        print(f"[patch] undersample patch skipped: {_e}")
+
+    # Second decode site (the one that fires FIRST): the classification cleaning
+    # pipeline runs TEXT filters (empty/short/dedup, all `x[input_column].strip()`)
+    # on input_column, which for audio tasks is "audio" -> decodes every clip ->
+    # OOM at "Filter: 0/N". Text cleaning is meaningless for audio; skip it there.
+    try:
+        import datasets as _dsmod
+        from mteb.abstasks._data_filter import task_pipelines as _tp
+        _orig_clean = _tp.clean_dataset
+
+        def _clean_skip_audio(dataset, *args, **kwargs):
+            ic = kwargs.get("input_column")
+            ts = kwargs.get("train_split")
+            try:
+                d = (dataset[ts] if isinstance(dataset, _dsmod.DatasetDict) and ts in dataset
+                     else (next(iter(dataset.values())) if isinstance(dataset, _dsmod.DatasetDict)
+                           else dataset))
+                if ic and isinstance(d.features.get(ic), _dsmod.Audio):
+                    print(f"[patch] clean_dataset skipped for audio column '{ic}'")
+                    return dataset
+            except Exception:                                  # noqa: BLE001
+                pass
+            return _orig_clean(dataset, *args, **kwargs)
+
+        _tp.clean_dataset = _clean_skip_audio
+        print("[patch] clean_dataset -> skip audio columns (no text-filter decode)")
+    except Exception as _e:                                    # noqa: BLE001
+        print(f"[patch] clean_dataset patch skipped: {_e}")
+
+    # THE actual VoxCelebSA OOM (found by reading source): its own dataset_transform does
+    #   self.dataset = self.dataset.filter(lambda x: x["label"] != "Disagreement")
+    # inside load_data. HF .filter() materializes the FULL row per example, decoding the
+    # audio column even though only "label" is read -> decodes all 3553 long clips -> OOM,
+    # upstream of clean_dataset/undersample. Fix: compute keep-idxs from the label column
+    # (columnar, no decode) and .select(). Replicates the original (filter test, rename test->train).
+    try:
+        import datasets as _dsm
+        from mteb.tasks.classification.eng.vox_celeb_sa import VoxCelebSA as _VC
+
+        def _vc_transform_no_decode(self, **_kw):
+            new = {}
+            for split, d in self.dataset.items():
+                labs = d["label"]                              # columnar: no audio decode
+                keep = [i for i, l in enumerate(labs) if l != "Disagreement"]
+                new[split] = d.select(keep)
+            dd = _dsm.DatasetDict(new)
+            dd["train"] = dd.pop("test")
+            self.dataset = dd
+
+        _VC.dataset_transform = _vc_transform_no_decode
+        print("[patch] VoxCelebSA.dataset_transform -> columnar label filter (no audio decode)")
+    except Exception as _e:                                    # noqa: BLE001
+        print(f"[patch] VoxCelebSA transform patch skipped: {_e}")
 
     wanted = {t.strip() for t in tasks.split(",") if t.strip()}
     bench = mteb.get_benchmark("MAEB(beta)")
     task_objs = [t for t in bench.tasks if t.metadata.name in wanted]
     missing = wanted - {t.metadata.name for t in task_objs}
     if missing:
-        raise ValueError(f"unknown MAEB tasks: {sorted(missing)}")
+        # Fall back to the full mteb registry for held-out tasks not in MAEB(beta)
+        # (e.g. second-benchmark emotion tasks IEMOCAPEmotion / EmoVDB* used by paper 3).
+        extra = list(mteb.get_tasks(tasks=sorted(missing)))
+        task_objs += extra
+        still = missing - {t.metadata.name for t in extra}
+        if still:
+            raise ValueError(f"unknown mteb tasks: {sorted(still)}")
     print(f"running {len(task_objs)} tasks: {[t.metadata.name for t in task_objs]}")
 
     if hub_wrapper_revision:
@@ -5096,7 +5355,7 @@ def _train_frames_impl(frame_shard, steps, batch_size, eval_size, lambda_coral,
                        d_resampler=256, n_query=64, fn_mask_threshold=0.0,
                        soft_label_beta=0.0, text_cache_tag="", num_workers=4,
                        train_max_frames=250, init_from_ckpt="", recaption=False,
-                       adapter_rank=0, skip_only=False, seed=-1) -> dict:
+                       adapter_rank=0, skip_only=False, seed=-1, no_shuffle=False) -> dict:
     import glob
     import itertools
     import json
@@ -5255,9 +5514,14 @@ def _train_frames_impl(frame_shard, steps, batch_size, eval_size, lambda_coral,
         # 4096 buffered items ~= 18GB RAM PER WORKER (2026-07-06: 6 workers x 4096 exhausted the
         # container's tensor-share space -> worker death -> silent hang). 1024 + shuffled shard
         # order keeps randomization adequate at ~4.6GB/worker.
+        # no_shuffle (E6 scene-grouped batching): read shards and clips in EXACT stored order so
+        # each contiguous batch_size block == one pre-arranged group. shuffle_buffer=1 is FIFO
+        # (identity), shuffle_shards off keeps shard order, and num_workers=0 avoids the
+        # multi-worker interleave that would scramble contiguous batches.
         train_ds = ShardedFrameDataset(shard_paths, shard_starts,
                                        exclude=set(eval_gidx) | recap_skip,
-                                       shuffle_buffer=1024,
+                                       shuffle_buffer=(1 if no_shuffle else 1024),
+                                       shuffle_shards=(not no_shuffle),
                                        seed=max(int(seed), 0),
                                        use_text_emb=use_text_cache,
                                        text_emb_tag=text_cache_tag,
@@ -5266,8 +5530,12 @@ def _train_frames_impl(frame_shard, steps, batch_size, eval_size, lambda_coral,
         # prefetch_factor=2 + file_system sharing avoids the shm blowout (was workers4xprefetch4).
         # Workers scale with corpus: 2 sufficed at 131K; 484K/940 shards starved the H100 to
         # ~55s/step (2026-07-06) -> parameterized, default 4.
-        loader = DataLoader(train_ds, batch_size=batch_size, collate_fn=collator, num_workers=int(num_workers),
-                            persistent_workers=True, prefetch_factor=2, drop_last=True)
+        if no_shuffle:
+            loader = DataLoader(train_ds, batch_size=batch_size, collate_fn=collator,
+                                num_workers=0, drop_last=True)
+        else:
+            loader = DataLoader(train_ds, batch_size=batch_size, collate_fn=collator, num_workers=int(num_workers),
+                                persistent_workers=True, prefetch_factor=2, drop_last=True)
     else:
         if recaption or skip_only:
             raise ValueError("recaption/skip_only require sharded frame sources")
@@ -5433,8 +5701,13 @@ def _train_frames_impl(frame_shard, steps, batch_size, eval_size, lambda_coral,
         print(f"TRAIN_FRAMES {result['status'].upper()}:", result)
         return result
 
-    a, t = encode_dataset(model, eval_ds, collator, device=dev)
-    rep = retrieval_report(a, t)
+    if len(eval_ds) > 0:
+        a, t = encode_dataset(model, eval_ds, collator, device=dev)
+        rep = retrieval_report(a, t)
+    else:
+        # eval_size=0 (E6 no_shuffle): skip the in-run carve-out entirely so scene-grouped
+        # batches stay intact; the RAVDESS/keyword eval runs separately on the saved ckpt.
+        rep = {"note": "in-run eval skipped (eval_size=0)"}
 
     # EXIT GATE: also score the PAPER-COMPARABLE min-rank-over-refs protocol on the held-out
     # multi-caption eval set (e.g. AudioCaps-883), so every run reports the number we track vs SOTA.
@@ -5478,8 +5751,8 @@ def _train_frames_impl(frame_shard, steps, batch_size, eval_size, lambda_coral,
         "loss_first": hist[0]["loss"] if hist else None,
         "loss_last": hist[-1]["loss"] if hist else None,
         "resumed_from_step": start_step,
-        "a2t_R@1": rep["a2t_R@1"], "a2t_R@5": rep["a2t_R@5"], "a2t_R@10": rep["a2t_R@10"],
-        "a2t_mAP@10": rep["a2t_mAP@10"], "t2a_R@1": rep["t2a_R@1"], "t2a_mAP@10": rep["t2a_mAP@10"],
+        "a2t_R@1": rep.get("a2t_R@1"), "a2t_R@5": rep.get("a2t_R@5"), "a2t_R@10": rep.get("a2t_R@10"),
+        "a2t_mAP@10": rep.get("a2t_mAP@10"), "t2a_R@1": rep.get("t2a_R@1"), "t2a_mAP@10": rep.get("t2a_mAP@10"),
         "score816": score816,                                  # paper-comparable min-rank-over-refs
         "train_seconds": train_seconds, "steps_per_min": steps_per_min,
         "base_drift": drift, "peak_vram_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
