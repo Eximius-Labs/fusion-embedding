@@ -469,6 +469,19 @@ fully testable without hardware.
 - [ ] **Track C corpus**: self-generated, CLAP-gated captions on permissively
       licensed audio — the commercially clean training set
 
+## Engram
+
+This project plugs into [Engram](https://github.com/Eximius-Labs/engram), the open cross-modal memory
+layer for physical AI. Engram indexes a robot's video, audio, and motion into one embedding space and
+answers questions about it in plain language, including temporal reasoning that retrieval alone cannot.
+Engram is built directly on Fusion Embedding 2.
+
+```bash
+pip install engram-robomem
+```
+
+Repo: https://github.com/Eximius-Labs/engram  |  PyPI: https://pypi.org/project/engram-robomem
+
 ## License
 
 Code: **[Apache-2.0](LICENSE)**. Model weights: the current previews are
