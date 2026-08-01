@@ -1,6 +1,6 @@
 <div align="center">
 
-![Fusion Embedding, by Eximius Labs](assets/git_banner.png)
+![Fusion Embedding, by Eximius Labs](https://raw.githubusercontent.com/Eximius-Labs/fusion-embedding/main/assets/git_banner.png)
 
 **One model. One vector space. Text, image, video, audio.**
 
@@ -108,7 +108,7 @@ an ImageBind comparison).
 
 ## Architecture
 
-![The Fusion Embedding family: both generations share the byte-frozen Qwen3-VL-Embedding-2B decoder and frozen Qwen2.5-Omni audio tower; generation 1 trains the FusionResampler (16.4M), generation 2 adds modality-gated adapters (+44.2M) that fire only on audio, with non-audio inputs bypassing bitwise-identically](assets/fe_family_architecture.png)
+![The Fusion Embedding family: both generations share the byte-frozen Qwen3-VL-Embedding-2B decoder and frozen Qwen2.5-Omni audio tower; generation 1 trains the FusionResampler (16.4M), generation 2 adds modality-gated adapters (+44.2M) that fire only on audio, with non-audio inputs bypassing bitwise-identically](https://raw.githubusercontent.com/Eximius-Labs/fusion-embedding/main/assets/fe_family_architecture.png)
 
 The **FusionResampler** is a Flamingo-style perceiver resampler running at a
 384-d bottleneck: `in_proj 3584→384` → N=64 learnable latent queries through
@@ -328,7 +328,7 @@ CLAP-family models that fine-tune both encoders end-to-end score higher on Audio
 fusion-embedding models train on audio–text only — their audio↔image alignment is
 emergent):
 
-![Unified-model positioning: VGGSound-696 cross-modal retrieval, R@10 averaged over both directions, versus trained parameters — the fusion-embedding family leads audio↔text over LanguageBind, ImageBind, and Gemini Embedding 2, and leads the emergent audio↔image cluster (ImageBind's supervised pair annotated)](assets/fe_positioning.png)
+![Unified-model positioning: VGGSound-696 cross-modal retrieval, R@10 averaged over both directions, versus trained parameters — the fusion-embedding family leads audio↔text over LanguageBind, ImageBind, and Gemini Embedding 2, and leads the emergent audio↔image cluster (ImageBind's supervised pair annotated)](https://raw.githubusercontent.com/Eximius-Labs/fusion-embedding/main/assets/fe_positioning.png)
 
 | Model | audio↔image | audio↔text | text↔image |
 |---|---|---|---|
@@ -359,7 +359,7 @@ AudioCaps gains. All with zero audio–image training pairs. What that looks lik
 (v0.2 examples; query clip's frame left; green = the clip's exact frame among the
 top 5):
 
-![Audio-to-image retrieval examples](assets/audio_to_image_gallery.png)
+![Audio-to-image retrieval examples](https://raw.githubusercontent.com/Eximius-Labs/fusion-embedding/main/assets/audio_to_image_gallery.png)
 
 *Example frames from the [VGGSound](https://www.robots.ox.ac.uk/~vgg/data/vggsound/) dataset (CC-BY-4.0), shown for evaluation illustration.*
 
