@@ -480,7 +480,7 @@ Engram is built directly on Fusion Embedding 2.
 pip install engram-robomem
 ```
 
-Repo: https://github.com/Eximius-Labs/engram  |  PyPI: https://pypi.org/project/engram-robomem
+Repo: https://github.com/Eximius-Labs/engram  |  PyPI: https://pypi.org/project/engram-robomem  |  Playground: https://www.eximiuslabs.com/playground
 
 ## License
 
