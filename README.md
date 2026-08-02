@@ -159,6 +159,14 @@ embedding model we measure against.
 | [`fusion-embedding-1-2b-preview`](https://huggingface.co/EximiusLabs/fusion-embedding-1-2b-preview) | Qwen3-VL-Embedding-2B | ~16M / 2B | 2048 | 2048 → 64 | **released — final (v0.3)** |
 | `fusion-embedding-2-8b` | Qwen3-VL-Embedding-8B | scaled / 8B | ~4096 | ~4096 → 64 | planned |
 
+Sense packs extend `fusion-embedding-2` to more sensors as separately loadable heads and adapter
+packs: [Ember](https://huggingface.co/EximiusLabs/fusion-embedding-2-ember) (thermal infrared),
+[Tremor](https://huggingface.co/EximiusLabs/fusion-embedding-2-tremor) (inertial motion, with a
+[Unitree-G1 head](https://huggingface.co/EximiusLabs/fusion-embedding-2-tremor-g1)), and
+[Tactus](https://huggingface.co/EximiusLabs/fusion-embedding-2-tactus), the tactile sense pack
+(32x32 pressure/taxel arrays from FSR gloves, e-skins, and robot hands), which matches to exceeds
+the STAG (Nature 2019) supervised baseline while remaining open-vocabulary.
+
 > **Research previews available:**
 > [EximiusLabs/fusion-embedding-2-2b-preview](https://huggingface.co/EximiusLabs/fusion-embedding-2-2b-preview)
 > (current line — connector + gated adapters) and
