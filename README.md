@@ -2,10 +2,11 @@
 
 ![Fusion Embedding, by Eximius Labs](https://raw.githubusercontent.com/Eximius-Labs/fusion-embedding/main/assets/git_banner.png)
 
-**One model. One vector space. Text, image, video, audio.**
+**One model. One vector space. Text, image, video, audio, and the senses a robot
+actually has.**
 
 *An open-weight multimodal embedding model that extends a state-of-the-art
-vision-language embedding base with audio — without modifying a single base weight.*
+vision-language base with new senses, without modifying a single base weight.*
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](#)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c.svg)](#)
@@ -20,9 +21,17 @@ vision-language embedding base with audio — without modifying a single base we
 
 ## What is Fusion Embedding?
 
-Fusion Embedding is a family of open-weight embedding models that map **four
-modalities into a single shared vector space**, built for retrieval, RAG,
-clustering, and cross-modal search — and designed to be **fully self-hostable**.
+Fusion Embedding is a family of open-weight embedding models that map **seven
+modalities into a single shared vector space**: text, image, video, audio, thermal,
+inertial motion, and touch. It is built for retrieval, RAG, clustering and cross-modal
+search, and it is **fully self-hostable**.
+
+The reason it spans that many is architectural. The base model is frozen and each new
+sense arrives as a separately loadable pack, so text, image and video vectors stay
+bit-for-bit identical to the base and gaining a modality never costs a re-index. In
+practice a sensor nobody has modeled before is a small trained head and an afternoon on
+one GPU.
+
 Two architecture generations are released:
 [**fusion-embedding-1**](https://huggingface.co/EximiusLabs/fusion-embedding-1-2b-preview)
 (connector-only, final at v0.3) and
