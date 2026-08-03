@@ -1,0 +1,14 @@
+name: "@eximius/fusion-embedding"
+type: plugin
+author: Eximius Labs
+version: 0.1.0
+url: https://github.com/Eximius-Labs/fusion-embedding/tree/main/fiftyone_fusion_embedding/plugin
+license: Apache 2.0
+description: >
+  Language-searchable embeddings for the sensor streams FiftyOne already synchronizes.
+  Embeds pressure, thermal, motion and audio fields into one shared space with text, so
+  the similarity panel answers plain-English queries over non-camera data.
+fiftyone:
+  version: ">=1.0.0"
+operators:
+  - compute_fusion_embeddings

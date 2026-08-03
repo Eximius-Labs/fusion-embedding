@@ -1,0 +1,132 @@
+{
+    "name": "Eximius-Labs/fiftyone-fusion-embedding",
+    "url": "https://github.com/Eximius-Labs/fusion-embedding",
+    "models": [
+        {
+            "base_name": "eximius/fusion-embedding-2",
+            "author": "Eximius Labs",
+            "license": "CC-BY-NC-4.0",
+            "source": "https://huggingface.co/EximiusLabs/fusion-embedding-2-2b-preview",
+            "description": "Multimodal embedding model mapping text, image, video and audio into one 2048-d space, with separately loadable sense packs for thermal, motion and touch (https://arxiv.org/abs/2607.18666)",
+            "tags": [
+                "embeddings",
+                "torch",
+                "zero-shot",
+                "multimodal",
+                "prompts"
+            ],
+            "date_added": "2026-08-03 00:00:00",
+            "requirements": {
+                "packages": [
+                    "torch",
+                    "torchvision",
+                    "transformers>=4.57",
+                    "fusion-embedding"
+                ],
+                "cpu": {
+                    "support": true
+                },
+                "gpu": {
+                    "support": true
+                }
+            },
+            "base_filename": "fusion-embedding-2.marker",
+            "size_bytes": 64
+        },
+        {
+            "base_name": "eximius/ember",
+            "author": "Eximius Labs",
+            "license": "CC-BY-NC-4.0",
+            "source": "https://huggingface.co/EximiusLabs/fusion-embedding-2-ember",
+            "description": "Thermal infrared sense pack: embeds thermal images in the same space as text, image, video and audio. Thermal-to-text retrieval R@10 0.785 against a frozen-base 0.224",
+            "tags": [
+                "embeddings",
+                "torch",
+                "zero-shot",
+                "thermal",
+                "prompts"
+            ],
+            "date_added": "2026-08-03 00:00:00",
+            "requirements": {
+                "packages": [
+                    "torch",
+                    "torchvision",
+                    "transformers>=4.57",
+                    "fusion-embedding"
+                ],
+                "cpu": {
+                    "support": true
+                },
+                "gpu": {
+                    "support": true
+                }
+            },
+            "base_filename": "ember.marker",
+            "size_bytes": 64
+        },
+        {
+            "base_name": "eximius/tactus",
+            "author": "Eximius Labs",
+            "license": "CC-BY-NC-4.0",
+            "source": "https://huggingface.co/EximiusLabs/fusion-embedding-2-tactus",
+            "description": "Touch sense pack for 32x32 pressure/taxel arrays (FSR gloves, e-skins, robot hands). Open-vocabulary object recognition at 0.77 top-1 on the STAG benchmark, above the dataset authors' own supervised CNN at 0.76",
+            "tags": [
+                "embeddings",
+                "torch",
+                "zero-shot",
+                "tactile",
+                "sensor",
+                "prompts"
+            ],
+            "date_added": "2026-08-03 00:00:00",
+            "requirements": {
+                "packages": [
+                    "torch",
+                    "torchvision",
+                    "transformers>=4.57",
+                    "fusion-embedding"
+                ],
+                "cpu": {
+                    "support": true
+                },
+                "gpu": {
+                    "support": true
+                }
+            },
+            "base_filename": "tactus.marker",
+            "size_bytes": 64
+        },
+        {
+            "base_name": "eximius/tactus-mat",
+            "author": "Eximius Labs",
+            "license": "ODC-By-1.0",
+            "source": "https://huggingface.co/EximiusLabs/fusion-embedding-2-tactus-mat",
+            "description": "Touch sense pack for 64x32 body pressure mats (bed, seat, wheelchair, insole). 17 in-bed postures as open-vocabulary text queries at 0.957 top-1 on held-out subjects",
+            "tags": [
+                "embeddings",
+                "torch",
+                "zero-shot",
+                "tactile",
+                "sensor",
+                "prompts"
+            ],
+            "date_added": "2026-08-03 00:00:00",
+            "requirements": {
+                "packages": [
+                    "torch",
+                    "torchvision",
+                    "transformers>=4.57",
+                    "fusion-embedding"
+                ],
+                "cpu": {
+                    "support": true
+                },
+                "gpu": {
+                    "support": true
+                }
+            },
+            "base_filename": "tactus-mat.marker",
+            "size_bytes": 64
+        }
+    ]
+}
