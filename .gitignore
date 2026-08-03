@@ -31,12 +31,5 @@ scripts/_local/
 # Model release staging dirs: weights live on the HF repos, not in git
 tactus_mat_release/
 
-# LaTeX build artifacts and local render/analysis dirs
-papers/**/*.aux
-papers/**/*.log
-papers/**/*.out
-papers/**/*.pdf
-!papers/**/fig_*.pdf
-papers/**/prev/
-papers/**/analysis/
-papers/arxiv_submissions/
+# Papers: drafts, figures, and arXiv bundles stay local
+papers/
