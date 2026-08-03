@@ -164,8 +164,13 @@ packs: [Ember](https://huggingface.co/EximiusLabs/fusion-embedding-2-ember) (the
 [Tremor](https://huggingface.co/EximiusLabs/fusion-embedding-2-tremor) (inertial motion, with a
 [Unitree-G1 head](https://huggingface.co/EximiusLabs/fusion-embedding-2-tremor-g1)), and
 [Tactus](https://huggingface.co/EximiusLabs/fusion-embedding-2-tactus), the tactile sense pack
-(32x32 pressure/taxel arrays from FSR gloves, e-skins, and robot hands), which matches to exceeds
-the STAG (Nature 2019) supervised baseline while remaining open-vocabulary.
+(32x32 pressure/taxel arrays from FSR gloves, e-skins, and robot hands), which matches, and at
+best exceeds, the STAG (Nature 2019) supervised baseline while remaining open-vocabulary.
+
+A pack can ship more than one sensor profile: [Tactus Mat](https://huggingface.co/EximiusLabs/fusion-embedding-2-tactus-mat) is the same
+tactile pack trained for a 64x32 body pressure mat (bed, seat, wheelchair, insole), reading 17
+in-bed postures as open-vocabulary text queries at 0.957 top-1 on held-out subjects. Adding a
+sensor is a small head trained against the same frozen text space, not a new base model.
 
 > **Research previews available:**
 > [EximiusLabs/fusion-embedding-2-2b-preview](https://huggingface.co/EximiusLabs/fusion-embedding-2-2b-preview)
@@ -490,9 +495,24 @@ pip install engram-robomem
 
 Repo: https://github.com/Eximius-Labs/engram  |  PyPI: https://pypi.org/project/engram-robomem  |  Playground: https://www.eximiuslabs.com/playground
 
+## Efferent
+
+Where this project reads senses in, [Efferent](https://github.com/Eximius-Labs/efferent) carries
+control back out: any ONNX policy on any robot, bound by joint name instead of hand-maintained
+index arrays, with a pre-flight doctor that probes the network for permuted joint order,
+world-vs-body frame errors, missing scales, and dead command dims before the robot moves.
+
+```bash
+pip install efferent
+```
+
+Repo: https://github.com/Eximius-Labs/efferent  |  PyPI: https://pypi.org/project/efferent
+
 ## License
 
-Code: **[Apache-2.0](LICENSE)**. Model weights: the current previews are
+Code: **[Apache-2.0](LICENSE)**. Sense-pack weights follow their training data: most packs are
+CC-BY-NC-4.0, while [Tactus Mat](https://huggingface.co/EximiusLabs/fusion-embedding-2-tactus-mat)
+is ODC-By 1.0. Model weights: the current previews are
 **CC-BY-NC-4.0** (research); the release tier will ship under a permissive
 license pending a license audit of the frozen audio tower and the
 training-data track used (research-posture vs commercially-clean corpora are
