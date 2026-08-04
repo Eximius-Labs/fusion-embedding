@@ -33,3 +33,6 @@ tactus_mat_release/
 
 # Papers: drafts, figures, and arXiv bundles stay local
 papers/
+
+# Outgoing documents for partners: local working files
+Tactile_Gripper_First_Data_Request.pdf
