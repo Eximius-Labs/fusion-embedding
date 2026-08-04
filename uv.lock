@@ -749,7 +749,7 @@ wheels = [
 
 [[package]]
 name = "fusion-embedding"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -770,6 +770,10 @@ hf = [
     { name = "soundfile" },
     { name = "transformers" },
 ]
+sense = [
+    { name = "librosa" },
+    { name = "soundfile" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -784,13 +788,15 @@ requires-dist = [
     { name = "bitsandbytes", marker = "sys_platform == 'linux' and extra == 'hf'", specifier = ">=0.43" },
     { name = "huggingface-hub", marker = "extra == 'hf'", specifier = ">=0.24" },
     { name = "librosa", marker = "extra == 'hf'", specifier = ">=0.10" },
+    { name = "librosa", marker = "extra == 'sense'", specifier = ">=0.10" },
     { name = "modal", marker = "extra == 'deploy'", specifier = ">=0.64" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "soundfile", marker = "extra == 'hf'", specifier = ">=0.12" },
+    { name = "soundfile", marker = "extra == 'sense'", specifier = ">=0.12" },
     { name = "torch", specifier = ">=2.1", index = "https://download.pytorch.org/whl/cu124" },
     { name = "transformers", marker = "extra == 'hf'", specifier = ">=4.46" },
 ]
-provides-extras = ["hf", "deploy"]
+provides-extras = ["hf", "deploy", "sense"]
 
 [package.metadata.requires-dev]
 dev = [

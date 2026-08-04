@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fusion-embedding"
-version = "0.2.0"
+version = "0.3.0"
 description = "Fusion Embedding: an open-weight multimodal embedding model. One vector space for text, image, video, and audio, on a frozen Qwen3-VL-Embedding base. Weights download from Hugging Face."
 authors = [{ name = "Abdul Basit Tonmoy" }]
 readme = "README.md"
@@ -33,6 +33,13 @@ Weights = "https://huggingface.co/EximiusLabs"
 [project.entry-points."vllm.general_plugins"]
 fusion_embedding = "fusion_embedding.vllm_plugin:register"
 
+# SGLang counterpart; inert outside an SGLang process. Serving support:
+# `python -m sglang.launch_server --model-path EximiusLabs/fusion-embedding-2-2b-preview
+# --is-embedding` (see fusion_embedding/sglang_plugin/README.md; smoke-tested against
+# sglang==0.5.16). The audio path needs librosa+soundfile (the `sense` extra below).
+[project.entry-points."sglang.srt.plugins"]
+fusion_embedding = "fusion_embedding.sglang_plugin:register"
+
 [project.optional-dependencies]
 # Real model loading: pulls the weights from Hugging Face at runtime via from_pretrained.
 # The base install (torch + numpy) runs the CPU end-to-end path against an injected fake.
@@ -46,6 +53,10 @@ hf = [
 ]
 # Modal serverless GPU deployment (preprocess + train as Modal functions).
 deploy = ["modal>=0.64"]
+# Audio decode/resample for the serving plugins (soxr_hq via librosa — the resampler
+# the released audio path was trained with). Subset of [hf]; kept separate so serving
+# environments need not pull transformers/accelerate.
+sense = ["librosa>=0.10", "soundfile>=0.12"]
 
 # Dev tooling — installed by default by `uv sync` (PEP 735 default group).
 # scikit-learn backs the STAG cluster-sampling helpers in scripts/fsr_train.py (PCA + KMeans);

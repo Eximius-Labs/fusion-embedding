@@ -22,7 +22,7 @@ __all__ = [
     "precompute_text_bank",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 _LAZY = {
     "EmberEmbedder": ("fusion_embedding.ember", "EmberEmbedder"),
