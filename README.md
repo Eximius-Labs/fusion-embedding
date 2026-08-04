@@ -13,6 +13,7 @@ vision-language base with new senses, without modifying a single base weight.*
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-research%20preview-orange.svg)](#roadmap)
 [![Paper](https://img.shields.io/badge/paper-arXiv%3A2607.18666-b31b1b.svg)](https://arxiv.org/abs/2607.18666)
+[![Corpus paper](https://img.shields.io/badge/corpus%20paper-arXiv%3A2608.01560-b31b1b.svg)](https://arxiv.org/abs/2608.01560)
 [![Deploy on RunPod](https://api.runpod.io/badge/Eximius-Labs/fusion-embedding)](https://www.runpod.io/console/hub/Eximius-Labs/fusion-embedding)
 
 </div>
