@@ -1,8 +1,10 @@
-# vllm-fusion-embedding
+# fusion-embedding vLLM plugin
 
 Out-of-tree [vLLM model plugin](https://docs.vllm.ai/en/latest/design/plugin_system.html)
 that serves the EximiusLabs **fusion-embedding-2** family
-(`architectures: ["FusionEmbeddingModel"]`) through vLLM's pooling runner.
+(`architectures: ["FusionEmbeddingModel"]`) through vLLM's pooling runner. Ships inside
+the `fusion-embedding` package (module `fusion_embedding.vllm_plugin`, entry point group
+`vllm.general_plugins`); it is inert unless a vLLM process loads it.
 
 Developed and smoke-tested against **`vllm==0.26.0`**.
 
@@ -39,9 +41,10 @@ Developed and smoke-tested against **`vllm==0.26.0`**.
 ## Install
 
 ```bash
-pip install vllm==0.26.0
-pip install -e vllm_fusion_embedding/          # this directory
+pip install 'vllm[audio]==0.26.0' fusion-embedding
 ```
+
+(The `[audio]` extra is required for the audio input path.)
 
 ## Serve
 

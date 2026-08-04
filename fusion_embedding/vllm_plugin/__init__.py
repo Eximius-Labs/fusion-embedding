@@ -6,7 +6,7 @@ plain
     vllm serve EximiusLabs/fusion-embedding-2-2b-preview --runner pooling
 
 resolves the repo's ``architectures: ["FusionEmbeddingModel"]`` to the pooling model
-implemented in :mod:`vllm_fusion_embedding.model`.
+implemented in :mod:`fusion_embedding.vllm_plugin.model`.
 
 ``register()`` must be safe to call multiple times and from any process (API server,
 engine core, workers) and must not initialize CUDA.
@@ -36,7 +36,7 @@ def register() -> None:
     from vllm import ModelRegistry
 
     ModelRegistry.register_model(
-        FUSION_ARCH, "vllm_fusion_embedding.model:FusionEmbeddingModel"
+        FUSION_ARCH, "fusion_embedding.vllm_plugin.model:FusionEmbeddingModel"
     )
 
     # 3) Per-architecture config hook: redirect the tokenizer to the frozen base repo

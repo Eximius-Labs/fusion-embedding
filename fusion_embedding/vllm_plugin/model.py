@@ -231,6 +231,9 @@ def _make_layer_hook(adapter: GatedAdapter, state: _AdapterState):
         use = idx[idx < n]
         if use.numel() == 0:
             return None
+        if os.environ.get("FUSION_VLLM_HOOK_DEBUG", "0") == "1":
+            logger.warning("[fusion] adapter hook FIRED on %d rows (n=%d)",
+                           int(use.numel()), int(n))
         sub = hidden.index_select(0, use)
         full = sub + residual.index_select(0, use)
         hidden.index_copy_(0, use, sub + adapter(full))
@@ -513,10 +516,16 @@ class FusionEmbeddingModel(_Qwen3VLForEmbedding):
                 GatedAdapter(d_llm, adapter_rank, adapter_act) for _ in layers
             ).float()
             self.audio_adapters.eval()
-            self._adapter_handles = [
-                layer.register_forward_hook(_make_layer_hook(ad, self._adapter_state))
-                for layer, ad in zip(layers, self.audio_adapters)
-            ]
+            # Debug isolation only (smoke): load the adapter weights but skip the layer
+            # hooks, separating "weights resident in memory" from "hooks registered".
+            if os.environ.get("FUSION_VLLM_SKIP_ADAPTER_HOOKS", "0") == "1":
+                logger.warning("[fusion] adapter hooks SKIPPED via env (debug)")
+                self._adapter_handles = []
+            else:
+                self._adapter_handles = [
+                    layer.register_forward_hook(_make_layer_hook(ad, self._adapter_state))
+                    for layer, ad in zip(layers, self.audio_adapters)
+                ]
 
         # ---- frozen audio tower (Qwen2.5-Omni thinker.audio_tower) ----
         self.audio_tower = None

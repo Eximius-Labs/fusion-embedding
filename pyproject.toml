@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fusion-embedding"
-version = "0.1.0"
+version = "0.2.0"
 description = "Fusion Embedding: an open-weight multimodal embedding model. One vector space for text, image, video, and audio, on a frozen Qwen3-VL-Embedding base. Weights download from Hugging Face."
 authors = [{ name = "Abdul Basit Tonmoy" }]
 readme = "README.md"
@@ -27,6 +27,12 @@ Homepage = "https://www.eximiuslabs.com"
 Repository = "https://github.com/Eximius-Labs/fusion-embedding"
 Weights = "https://huggingface.co/EximiusLabs"
 
+# vLLM discovers and loads this at startup; it is inert outside a vLLM process.
+# Serving support: `vllm serve EximiusLabs/fusion-embedding-2-2b-preview --runner pooling`
+# (see fusion_embedding/vllm_plugin/README.md; smoke-tested against vllm==0.26.0).
+[project.entry-points."vllm.general_plugins"]
+fusion_embedding = "fusion_embedding.vllm_plugin:register"
+
 [project.optional-dependencies]
 # Real model loading: pulls the weights from Hugging Face at runtime via from_pretrained.
 # The base install (torch + numpy) runs the CPU end-to-end path against an injected fake.
@@ -42,8 +48,10 @@ hf = [
 deploy = ["modal>=0.64"]
 
 # Dev tooling — installed by default by `uv sync` (PEP 735 default group).
+# scikit-learn backs the STAG cluster-sampling helpers in scripts/fsr_train.py (PCA + KMeans);
+# it is a test-time requirement so those helpers are never silently skipped before a GPU run.
 [dependency-groups]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "scikit-learn>=1.3"]
 
 [tool.setuptools.packages.find]
 include = ["fusion_embedding*"]

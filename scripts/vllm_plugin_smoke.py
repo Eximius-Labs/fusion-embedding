@@ -1,4 +1,4 @@
-"""Modal smoke for the out-of-tree vLLM plugin (vllm_fusion_embedding).
+"""Modal smoke for the out-of-tree vLLM plugin (fusion_embedding.vllm_plugin).
 
 Stage-gated parity checks of the vLLM-served FusionEmbeddingModel against the
 reference embedder (fusion_embedding.UnifiedEmbedder) on identical inputs:
@@ -49,14 +49,16 @@ ref_img = (modal.Image.debian_slim(python_version="3.11")
                         extra_index_url="https://download.pytorch.org/whl/cu124")
            .add_local_python_source("fusion_embedding"))
 
-# vLLM image: pinned vllm 0.26.0 + the plugin pip-installed (entry point must be
+# vLLM image: pinned vllm 0.26.0 + the fusion-embedding package pip-installed (the
+# plugin ships inside it as fusion_embedding.vllm_plugin; the entry point must be
 # registered through pip metadata so every vLLM process auto-loads it).
 vllm_img = (modal.Image.debian_slim(python_version="3.12")
             .apt_install("git", "ffmpeg", "libsndfile1")
             .pip_install("vllm[audio]==0.26.0", "soundfile>=0.12", "librosa>=0.10")
-            .add_local_dir("vllm_fusion_embedding", "/pkg/vllm_fusion_embedding",
-                           copy=True)
-            .run_commands("pip install /pkg/vllm_fusion_embedding"))
+            .add_local_file("pyproject.toml", "/pkg/fe/pyproject.toml", copy=True)
+            .add_local_file("README.md", "/pkg/fe/README.md", copy=True)
+            .add_local_dir("fusion_embedding", "/pkg/fe/fusion_embedding", copy=True)
+            .run_commands("pip install --no-deps /pkg/fe"))
 
 volume = modal.Volume.from_name("fusion-data")
 if _os.environ.get("HF_TOKEN"):
@@ -213,6 +215,7 @@ def vllm_stage_a(payload: dict) -> dict:
               volumes={"/vol": volume}, secrets=[hf_secret])
 def vllm_stage_b(payload: dict) -> dict:
     _os.environ.update(HF_HOME="/vol/hf", FUSION_VLLM_DISABLE_AUDIO="1")
+    _os.environ.update(payload.get("extra_env", {}))
     return _vllm_embed(payload, with_audio=False)
 
 
@@ -290,7 +293,7 @@ def check_registration() -> str:
     import transformers
     lines.append(f"transformers {transformers.__version__}")
 
-    from vllm_fusion_embedding import register
+    from fusion_embedding.vllm_plugin import register
     register()
 
     from transformers import AutoConfig
@@ -302,7 +305,7 @@ def check_registration() -> str:
     lines.append(f"text_config layers={cfg.text_config.num_hidden_layers} "
                  f"matryoshka={cfg.matryoshka_dimensions}")
 
-    import vllm_fusion_embedding.model as m
+    import fusion_embedding.vllm_plugin.model as m
     lines.append(f"model module import OK: {m.FusionEmbeddingModel.__name__} "
                  f"pooling={m.FusionEmbeddingModel.is_pooling_model}")
 
@@ -386,7 +389,33 @@ def main(stage: str = "a", audio_paths: str = "", dtype: str = "float32"):
         ok &= _report("image", ref["image"], va["image"], 0.999)
         print("STAGE A:", "PASS" if ok else "FAIL")
 
+    elif stage == "aa":
+        # Determinism control: the same stage-a configuration in two fresh containers.
+        # If this is not exactly 0, cross-container drift exists independent of the
+        # adapters, and stage b's exact-zero gate must be judged against this floor.
+        print("== vLLM stage A, container 1 ==")
+        va = vllm_stage_a.remote(payload)
+        print("== vLLM stage A, container 2 ==")
+        vb = vllm_stage_a.remote(payload)
+        for name in ("text", "image"):
+            for i, (x, y) in enumerate(zip(va[name], vb[name])):
+                print(f"  {name}[{i}]: max_abs_diff={_max_abs_diff(x, y):.3e}")
+
+    elif stage == "b-nohooks":
+        # Isolation: adapters loaded (weights resident) but layer hooks not registered.
+        # Compares against plain stage a; separates memory-layout effects from hook
+        # effects if stage b ever drifts from exact zero.
+        payload["extra_env"] = {"FUSION_VLLM_SKIP_ADAPTER_HOOKS": "1"}
+        print("== vLLM stage A (no adapters) ==")
+        va = vllm_stage_a.remote(payload)
+        print("== vLLM stage B variant (weights loaded, hooks skipped) ==")
+        vb = vllm_stage_b.remote(payload)
+        for name in ("text", "image"):
+            for i, (x, y) in enumerate(zip(va[name], vb[name])):
+                print(f"  {name}[{i}]: max_abs_diff={_max_abs_diff(x, y):.3e}")
+
     elif stage == "b":
+        payload.setdefault("extra_env", {})["FUSION_VLLM_HOOK_DEBUG"] = "1"
         print("== vLLM stage A (no adapters) ==")
         va = vllm_stage_a.remote(payload)
         print("== vLLM stage B (adapters loaded, gates closed) ==")
