@@ -107,7 +107,12 @@ Both sides at fp32 (isolates implementation correctness from bf16 kernel roundin
   0.999986-0.999990 (2 images) — PASS at > 0.999.
 - Stage B (adapters loaded, gates closed): every text/image vector identical to the
   adapter-free run with max_abs_diff exactly 0.0 (at fp32 AND bf16) — the token
-  gate is a true no-op on non-audio sequences.
+  gate is a true no-op on non-audio sequences. One condition: the comparison pins
+  the KV-cache allocation (`num_gpu_blocks_override`). Without the pin, loading the
+  adapters shrinks free memory, the engine sizes the KV pool differently, and
+  fused-attention kernel plans can change — a deterministic ~1e-4 drift that is
+  engine kernel selection, not adapter math. Any bitwise A/B comparison across
+  model configurations should pin the KV allocation on both sides.
 - Stage C (full model, audio): cosine 0.999999-1.000000 on 6 clips (3 synthetic +
   3 real FreeSound wavs, incl. 44.1 kHz clips exercising resampling).
 

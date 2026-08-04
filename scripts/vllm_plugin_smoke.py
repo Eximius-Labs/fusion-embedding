@@ -171,9 +171,16 @@ def _vllm_embed(payload: dict, with_audio: bool) -> dict:
     limits = {"image": 1, "video": 0}
     if with_audio:
         limits["audio"] = 1
+    # num_gpu_blocks_override pins the KV-cache allocation across configurations.
+    # Without it, loading the adapters (~350MB fp32) shrinks free memory, vLLM sizes
+    # the KV pool differently, and fused-attention kernel plans change — a
+    # deterministic ~1e-4 drift between adapter-free and adapters-loaded runs that
+    # has nothing to do with the adapter math (root-caused on the SGLang port,
+    # where pinning max_total_tokens restored bitwise equality).
     llm = LLM(model=REPO, runner="pooling", max_model_len=8192,
               dtype=payload.get("dtype", "auto"),
-              gpu_memory_utilization=0.85, limit_mm_per_prompt=limits)
+              gpu_memory_utilization=0.85, limit_mm_per_prompt=limits,
+              num_gpu_blocks_override=2048)
 
     def one(prompt) -> list:
         res = llm.embed(prompt)
