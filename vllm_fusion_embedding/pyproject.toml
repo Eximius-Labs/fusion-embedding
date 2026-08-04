@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vllm-fusion-embedding"
+version = "0.1.0"
+description = "Out-of-tree vLLM model plugin for EximiusLabs fusion-embedding-2 (FusionEmbeddingModel)"
+readme = "README.md"
+requires-python = ">=3.10"
+# vllm is intentionally NOT a hard dependency: the plugin must be installed into an
+# environment that already carries the pinned vllm (see README; developed against
+# vllm==0.26.0). Declaring it here would let pip silently move the pin.
+dependencies = []
+
+[project.entry-points."vllm.general_plugins"]
+fusion_embedding = "vllm_fusion_embedding:register"
+
+[tool.setuptools.packages.find]
+include = ["vllm_fusion_embedding*"]
